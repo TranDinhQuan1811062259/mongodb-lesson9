@@ -1,8 +1,9 @@
 const Customer = require('../models/customerModel');
 const crypto = require('crypto');
+const bcrypt = require('bcrypt'); // Import thư viện mã hóa mật khẩu cho Lesson 7
 
 // ==========================================
-// CÂU 0: GET /customers/getApikey/:id
+// CÂU 0: GET /customers/getApikey/:id (Cũ của bạn)
 // ==========================================
 const getApiKey = async (req, res) => {
     try {
@@ -11,13 +12,9 @@ const getApiKey = async (req, res) => {
             return res.status(404).json({ message: "Không tìm thấy khách hàng để cấp API Key!" });
         }
 
-        // Sinh chuỗi ngẫu nhiên dài 6 ký tự bằng crypto
         const randomString = crypto.randomBytes(3).toString('hex');
-
-        // Tạo chuỗi apiKey theo đúng định dạng đề bài yêu cầu
         const apiKey = `web-$${customer.id}$-${customer.email}-${randomString}$`;
 
-        // Lưu apiKey này vào database của khách hàng để sau này đối chiếu
         customer.apiKey = apiKey;
         await customer.save();
 
@@ -28,7 +25,7 @@ const getApiKey = async (req, res) => {
 };
 
 // ==========================================
-// CÂU 1: GET /customers
+// CÂU 1: GET /customers (Cũ của bạn)
 // ==========================================
 const getAllCustomers = async (req, res) => {
     try {
@@ -40,7 +37,7 @@ const getAllCustomers = async (req, res) => {
 };
 
 // ==========================================
-// CÂU 2: GET /customers/:id
+// CÂU 2: GET /customers/:id (Cũ của bạn)
 // ==========================================
 const getCustomerById = async (req, res) => {
     try {
@@ -55,13 +52,11 @@ const getCustomerById = async (req, res) => {
 };
 
 // ==========================================
-// CÂU 6: POST /customers
+// CÂU 6: POST /customers (Cũ của bạn)
 // ==========================================
 const createCustomer = async (req, res) => {
     try {
         const { name, email, age } = req.body;
-        
-        // Sinh ngẫu nhiên ID không trùng lặp (ví dụ: c1a2b3c)
         const randomId = 'c' + crypto.randomBytes(3).toString('hex');
 
         const newCustomer = new Customer({
@@ -79,11 +74,82 @@ const createCustomer = async (req, res) => {
 };
 
 // ==========================================
-// KHỐI EXPORT DUY NHẤT Ở CUỐI FILE
+// NEW LESSON 7: POST /register (API Đăng ký tài khoản)
+// ==========================================
+const register = async (req, res) => {
+    try {
+        const { name, email, age, password } = req.body;
+        
+        // Sinh ngẫu nhiên ID không trùng lặp giống hàm cũ của bạn
+        const randomId = 'c' + crypto.randomBytes(3).toString('hex');
+
+        // Mã hoá mật khẩu bằng bcrypt
+        const salt = await bcrypt.genSalt(10);
+        const hashedPassword = await bcrypt.hash(password, salt);
+
+        const newCustomer = new Customer({
+            id: randomId,
+            name,
+            email,
+            age,
+            password: hashedPassword
+        });
+
+        await newCustomer.save();
+
+        // Ẩn mật khẩu khi phản hồi về client cho bảo mật
+        const userResponse = newCustomer.toObject();
+        delete userResponse.password;
+
+        res.status(201).json(userResponse);
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
+// ==========================================
+// NEW LESSON 7: POST /login (API Đăng nhập trả về apiKey mới)
+// ==========================================
+const login = async (req, res) => {
+    try {
+        const { email, password } = req.body;
+
+        const customer = await Customer.findOne({ email });
+        if (!customer) {
+            return res.status(400).json({ message: "Email hoặc mật khẩu không chính xác!" });
+        }
+
+        // Kiểm tra xem mật khẩu nhập vào có khớp với mật khẩu mã hóa trong DB không
+        const isMatch = await bcrypt.compare(password, customer.password);
+        if (!isMatch) {
+            return res.status(400).json({ message: "Email hoặc mật khẩu không chính xác!" });
+        }
+
+        // Sinh chuỗi ngẫu nhiên để xác thực apiKey
+        const randomString = crypto.randomBytes(4).toString('hex');
+
+        // Khớp định dạng đề bài: web-${userId}-${email}-${randomString}$
+        // Mình dùng customer.id chuỗi ngẫu nhiên của bạn luôn nhé
+        const apiKey = `web-$${customer.id}$-${customer.email}-${randomString}$`;
+
+        // Lưu apiKey này vào database của khách hàng để sau này đối chiếu
+        customer.apiKey = apiKey;
+        await customer.save();
+
+        res.status(200).json({ apiKey: apiKey });
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
+// ==========================================
+// KHỐI EXPORT DUY NHẤT Ở CUỐI FILE (Cập nhật đầy đủ hàm mới)
 // ==========================================
 module.exports = {
     getApiKey,
     getAllCustomers,
     getCustomerById,
-    createCustomer
+    createCustomer,
+    register, // Hàm mới Lesson 7
+    login     // Hàm mới Lesson 7
 };

@@ -2,17 +2,28 @@ const Order = require('../models/orderModel');
 const Product = require('../models/productModel');
 const crypto = require('crypto');
 
-// Câu 3: GET /customers/:customerId/orders -> Lấy danh sách đơn hàng của một khách hàng cụ thể
+// ==============================================================================
+// Câu 3: GET /users/:id/orders -> Lấy danh sách đơn hàng của bản thân (Lesson 7 chỉnh sửa)
+// ==============================================================================
 const getOrdersByCustomer = async (req, res) => {
     try {
-        const orders = await Order.find({ customerId: req.params.customerId });
-        res.status(200).json(orders); // Tự động trả về mảng rỗng [] nếu không tìm thấy đơn nào
+        const { id } = req.params;
+
+        // Yêu cầu Lesson 7: user chỉ xem được thông tin orders của bản thân mình
+        if (id !== req.user.id) {
+            return res.status(403).json({ message: "Bạn không có quyền xem đơn hàng của người khác!" });
+        }
+
+        const orders = await Order.find({ customerId: id });
+        res.status(200).json(orders); 
     } catch (error) {
         res.status(500).json({ message: error.message });
     }
 };
 
-// Câu 4: GET /orders/highvalue -> Lấy các đơn hàng có tổng giá trị > 10 triệu
+// ==============================================================================
+// Câu 4: GET /orders/highvalue -> Giữ nguyên câu cũ của bạn
+// ==============================================================================
 const getHighValueOrders = async (req, res) => {
     try {
         const highValueOrders = await Order.find({ totalPrice: { $gt: 10000000 } });
@@ -22,11 +33,16 @@ const getHighValueOrders = async (req, res) => {
     }
 };
 
-// Câu 7: POST /orders -> Tạo mới một đơn hàng (đã kiểm tra kho ở middleware)
+// ==============================================================================
+// Câu 7: POST /orders -> Tạo mới một đơn hàng (Lesson 7 chỉnh sửa tự động gán user)
+// ==============================================================================
 const createOrder = async (req, res) => {
     try {
-        const { customerId, productId, quantity } = req.body;
+        const { productId, quantity } = req.body;
         const product = req.productData; // Lấy sản phẩm đã tìm thấy từ middleware chuyển sang
+
+        // Yêu cầu Lesson 7: khi tạo đơn hàng, mặc định sẽ là của người đang đăng nhập
+        const customerId = req.user.id; 
 
         // Tính toán tổng tiền dựa trên giá của sản phẩm và số lượng đặt
         const totalPrice = product.price * quantity;
@@ -53,7 +69,9 @@ const createOrder = async (req, res) => {
     }
 };
 
-// Câu 8: PUT /orders/:orderId -> Cập nhật số lượng sản phẩm trong đơn hàng và tính lại tiền
+// ==============================================================================
+// Câu 8: PUT /orders/:id -> Cập nhật số lượng đơn hàng của bản thân (Lesson 7 chỉnh sửa)
+// ==============================================================================
 const updateOrderQuantity = async (req, res) => {
     try {
         const { quantity } = req.body;
@@ -62,9 +80,14 @@ const updateOrderQuantity = async (req, res) => {
         }
 
         // 1. Tìm đơn hàng cần cập nhật
-        const order = await Order.findOne({ id: req.params.orderId });
+        const order = await Order.findOne({ id: req.params.id });
         if (!order) {
             return res.status(404).json({ message: "Không tìm thấy đơn hàng yêu cầu!" });
+        }
+
+        // Yêu cầu Lesson 7: User chỉ được cập nhật đơn hàng của bản thân
+        if (order.customerId !== req.user.id) {
+            return res.status(403).json({ message: "Bạn không có quyền chỉnh sửa đơn hàng của người khác!" });
         }
 
         // 2. Tìm sản phẩm liên quan để lấy giá tính lại và check kho
@@ -83,7 +106,7 @@ const updateOrderQuantity = async (req, res) => {
             });
         }
 
-        // 3. Cập nhật số lượng tồn kho của sản phẩm
+        // 3. Cập nhật số lượng tồn kho của sản phẩm (giảm đi lượng tăng thêm hoặc cộng lại nếu giảm đặt)
         product.quantity -= quantityDifference;
         await product.save();
 
@@ -98,9 +121,42 @@ const updateOrderQuantity = async (req, res) => {
     }
 };
 
+// ==============================================================================
+// NEW LESSON 7: DELETE /orders/:id -> Xóa đơn hàng chính chủ
+// ==============================================================================
+const deleteOrder = async (req, res) => {
+    try {
+        const order = await Order.findOne({ id: req.params.id });
+        if (!order) {
+            return res.status(404).json({ message: "Không tìm thấy đơn hàng cần xóa!" });
+        }
+
+        // Yêu cầu Lesson 7: User chỉ được xoá đơn hàng của bản thân
+        if (order.customerId !== req.user.id) {
+            return res.status(403).json({ message: "Bạn không có quyền xóa đơn hàng của người khác!" });
+        }
+
+        // Tìm lại sản phẩm để hoàn trả số lượng về kho trước khi hủy đơn (Tùy chọn tối ưu thêm)
+        const product = await Product.findOne({ id: order.productId });
+        if (product) {
+            product.quantity += order.quantity;
+            await product.save();
+        }
+
+        await Order.deleteOne({ id: req.params.id });
+        res.status(200).json({ message: "Xóa đơn hàng thành công và đã hoàn trả số lượng về kho!" });
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
+// ==============================================================================
+// KHỐI EXPORT DUY NHẤT Ở CUỐI FILE (Cập nhật đầy đủ hàm mới)
+// ==============================================================================
 module.exports = {
     getOrdersByCustomer,
     getHighValueOrders,
     createOrder,
-    updateOrderQuantity
+    updateOrderQuantity,
+    deleteOrder // Hàm mới Lesson 7
 };
