@@ -1,103 +1,36 @@
 const Customer = require('../models/customerModel');
 const crypto = require('crypto');
-const bcrypt = require('bcrypt'); // Import thư viện mã hóa mật khẩu cho Lesson 7
+const jwt = require('jsonwebtoken'); // Thư viện Token của Lesson 8
+
+// Khai báo mã bí mật tạm thời phục vụ ký mã độc quyền cho Token
+const ACCESS_TOKEN_SECRET = 'access_secret_key_lesson_8_quan_anthony';
+const REFRESH_TOKEN_SECRET = 'refresh_secret_key_lesson_8_quan_anthony';
+
+// Mảng tạm thời lưu trữ các refreshToken hợp lệ để đối chiếu (Yêu cầu đề bài)
+let refreshTokens = [];
 
 // ==========================================
-// CÂU 0: GET /customers/getApikey/:id (Cũ của bạn)
-// ==========================================
-const getApiKey = async (req, res) => {
-    try {
-        const customer = await Customer.findOne({ id: req.params.id });
-        if (!customer) {
-            return res.status(404).json({ message: "Không tìm thấy khách hàng để cấp API Key!" });
-        }
-
-        const randomString = crypto.randomBytes(3).toString('hex');
-        const apiKey = `web-$${customer.id}$-${customer.email}-${randomString}$`;
-
-        customer.apiKey = apiKey;
-        await customer.save();
-
-        res.status(200).json({ apiKey: apiKey });
-    } catch (error) {
-        res.status(500).json({ message: error.message });
-    }
-};
-
-// ==========================================
-// CÂU 1: GET /customers (Cũ của bạn)
-// ==========================================
-const getAllCustomers = async (req, res) => {
-    try {
-        const customers = await Customer.find({});
-        res.status(200).json(customers);
-    } catch (error) {
-        res.status(500).json({ message: error.message });
-    }
-};
-
-// ==========================================
-// CÂU 2: GET /customers/:id (Cũ của bạn)
-// ==========================================
-const getCustomerById = async (req, res) => {
-    try {
-        const customer = await Customer.findOne({ id: req.params.id });
-        if (!customer) {
-            return res.status(404).json({ message: "Không tìm thấy khách hàng yêu cầu!" });
-        }
-        res.status(200).json(customer);
-    } catch (error) {
-        res.status(500).json({ message: error.message });
-    }
-};
-
-// ==========================================
-// CÂU 6: POST /customers (Cũ của bạn)
-// ==========================================
-const createCustomer = async (req, res) => {
-    try {
-        const { name, email, age } = req.body;
-        const randomId = 'c' + crypto.randomBytes(3).toString('hex');
-
-        const newCustomer = new Customer({
-            id: randomId,
-            name,
-            email,
-            age
-        });
-
-        await newCustomer.save();
-        res.status(201).json(newCustomer);
-    } catch (error) {
-        res.status(500).json({ message: error.message });
-    }
-};
-
-// ==========================================
-// NEW LESSON 7: POST /register (API Đăng ký tài khoản)
+// CÂU 1: POST /register (Đăng ký tài khoản - Lesson 8)
 // ==========================================
 const register = async (req, res) => {
     try {
         const { name, email, age, password } = req.body;
         
-        // Sinh ngẫu nhiên ID không trùng lặp giống hàm cũ của bạn
+        // Sinh ngẫu nhiên ID không trùng lặp
         const randomId = 'c' + crypto.randomBytes(3).toString('hex');
 
-        // Mã hoá mật khẩu bằng bcrypt
-        const salt = await bcrypt.genSalt(10);
-        const hashedPassword = await bcrypt.hash(password, salt);
-
+        // Khởi tạo đối tượng (Model đã được sửa, tự động băm mật khẩu chuẩn async/await)
         const newCustomer = new Customer({
             id: randomId,
             name,
             email,
             age,
-            password: hashedPassword
+            password 
         });
 
         await newCustomer.save();
 
-        // Ẩn mật khẩu khi phản hồi về client cho bảo mật
+        // Ẩn mật khẩu khi phản hồi về client
         const userResponse = newCustomer.toObject();
         delete userResponse.password;
 
@@ -108,48 +41,120 @@ const register = async (req, res) => {
 };
 
 // ==========================================
-// NEW LESSON 7: POST /login (API Đăng nhập trả về apiKey mới)
+// CÂU 2: POST /login (Đăng nhập - Trả về Access Token & Refresh Token)
 // ==========================================
 const login = async (req, res) => {
     try {
         const { email, password } = req.body;
 
+        // Tìm khách hàng theo email
         const customer = await Customer.findOne({ email });
         if (!customer) {
             return res.status(400).json({ message: "Email hoặc mật khẩu không chính xác!" });
         }
 
-        // Kiểm tra xem mật khẩu nhập vào có khớp với mật khẩu mã hóa trong DB không
-        const isMatch = await bcrypt.compare(password, customer.password);
+        // Sử dụng hàm comparePassword tiện ích tụi mình đã viết bên Model
+        const isMatch = await customer.comparePassword(password);
         if (!isMatch) {
             return res.status(400).json({ message: "Email hoặc mật khẩu không chính xác!" });
         }
 
-        // Sinh chuỗi ngẫu nhiên để xác thực apiKey
-        const randomString = crypto.randomBytes(4).toString('hex');
+        // Tạo dữ liệu payload đính kèm bên trong token
+        const userPayload = { id: customer.id, email: customer.email };
 
-        // Khớp định dạng đề bài: web-${userId}-${email}-${randomString}$
-        // Mình dùng customer.id chuỗi ngẫu nhiên của bạn luôn nhé
-        const apiKey = `web-$${customer.id}$-${customer.email}-${randomString}$`;
+        // 1. Tạo Access Token (Có thời hạn ngắn - ví dụ: 15m)
+        const accessToken = jwt.sign(userPayload, ACCESS_TOKEN_SECRET, { expiresIn: '15m' });
 
-        // Lưu apiKey này vào database của khách hàng để sau này đối chiếu
-        customer.apiKey = apiKey;
-        await customer.save();
+        // 2. Tạo Refresh Token (Có thời hạn dài - ví dụ: 7d)
+        const refreshToken = jwt.sign(userPayload, REFRESH_TOKEN_SECRET, { expiresIn: '7d' });
 
-        res.status(200).json({ apiKey: apiKey });
+        // Lưu refresh token vào mảng tạm thời để quản lý
+        refreshTokens.push(refreshToken);
+
+        res.status(200).json({
+            message: "Đăng nhập thành công!",
+            access_token: accessToken,
+            refresh_token: refreshToken
+        });
     } catch (error) {
         res.status(500).json({ message: error.message });
     }
 };
 
 // ==========================================
-// KHỐI EXPORT DUY NHẤT Ở CUỐI FILE (Cập nhật đầy đủ hàm mới)
+// CÂU 7: POST /refresh-token (Cấp lại access_token mới)
+// ==========================================
+const refreshTokenHandler = async (req, res) => {
+    try {
+        const { refresh_token } = req.body;
+
+        if (!refresh_token) {
+            return res.status(401).json({ message: "Không tìm thấy Refresh Token!" });
+        }
+
+        // Kiểm tra xem token này có nằm trong danh sách được hệ thống cấp phép không
+        if (!refreshTokens.includes(refresh_token)) {
+            return res.status(403).json({ message: "Refresh Token không hợp lệ hoặc đã bị vô hiệu hóa!" });
+        }
+
+        // Xác thực chữ ký của Refresh Token
+        jwt.verify(refresh_token, REFRESH_TOKEN_SECRET, (err, user) => {
+            if (err) {
+                return res.status(403).json({ message: "Refresh Token đã hết hạn hoặc không trùng khớp!" });
+            }
+
+            // Ký một Access Token mới toanh dựa trên thông tin user cũ
+            const newAccessToken = jwt.sign(
+                { id: user.id, email: user.email }, 
+                ACCESS_TOKEN_SECRET, 
+                { expiresIn: '15m' }
+            );
+
+            res.status(200).json({
+                access_token: newAccessToken
+            });
+        });
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
+// ==========================================
+// CÁC HÀM GET CŨ (Giữ lại nếu bạn cần dùng)
+// ==========================================
+const getAllCustomers = async (req, res) => {
+    try {
+        const customers = await Customer.find({});
+        res.status(200).json(customers);
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
+const getCustomerById = async (req, res) => {
+    try {
+        const customer = await Customer.findOne({ id: req.params.id });
+        if (!customer) return res.status(404).json({ message: "Không tìm thấy khách hàng!" });
+        res.status(200).json(customer);
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
+// Hàm bổ sung tạm thời giữ cấu trúc tương thích route cũ, tránh lỗi cache
+const createCustomer = (req, res) => {
+    res.status(400).json({ message: "Vui lòng sử dụng API /register để đăng ký tài khoản mới." });
+};
+
+// ==========================================
+// KHỐI EXPORT ĐẦY ĐỦ VÀ AN TOÀN CHO LESSON 8
 // ==========================================
 module.exports = {
-    getApiKey,
+    register,
+    login,
+    refreshTokenHandler, 
     getAllCustomers,
     getCustomerById,
     createCustomer,
-    register, // Hàm mới Lesson 7
-    login     // Hàm mới Lesson 7
+    ACCESS_TOKEN_SECRET
 };

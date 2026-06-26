@@ -1,71 +1,62 @@
 const express = require('express');
 const router = express.Router();
 
-// Import các Controllers
-const { 
-    getAllCustomers, 
-    getCustomerById, 
-    createCustomer, 
-    getApiKey, 
-    register, 
-    login 
-} = require('../controllers/customerController');
+// Import các Controller chính
+const customerController = require('../controllers/customerController');
+const orderController = require('../controllers/orderController');
 
-const { getProductsByPrice } = require('../controllers/productController');
+// ==========================================
+// MIDDLEWARE XÁC THỰC TOKEN (LESSON 8)
+// ==========================================
+const jwt = require('jsonwebtoken');
+const authenticateToken = (req, res, next) => {
+    const authHeader = req.headers['authorization'];
+    // Lấy chuỗi chuỗi chuỗi Token sau chữ "Bearer "
+    const token = authHeader && authHeader.split(' ')[1];
 
-const { 
-    getOrdersByCustomer, 
-    getHighValueOrders, 
-    createOrder, 
-    updateOrderQuantity, 
-    deleteOrder,
-    // GIẢ ĐỊNH: Bổ sung thêm hàm lấy tất cả đơn hàng nếu controller của bạn có hỗ trợ
-    getAllOrders 
-} = require('../controllers/orderController');
+    if (!token) {
+        return res.status(401).json({ message: "Không tìm thấy Access Token! Bạn cần đăng nhập." });
+    }
 
-// Import các Middlewares
-const { 
-    validateRegister, 
-    validateLogin, 
-    validateOrder, 
-    checkApiKey 
-} = require('../middlewares/authMiddleware');
+    jwt.verify(token, customerController.ACCESS_TOKEN_SECRET, (err, user) => {
+        if (err) {
+            return res.status(403).json({ message: "Access Token đã hết hạn hoặc không hợp lệ!" });
+        }
+        req.user = user; // Đính kèm thông tin user đã giải mã vào req để controller xài
+        next();
+    });
+};
 
+// ==========================================
+// ROUTES ĐĂNG KÝ / ĐĂNG NHẬP (CUSTOMER)
+// ==========================================
+router.post('/register', customerController.register);
+router.post('/login', customerController.login);
+router.post('/refresh-token', customerController.refreshTokenHandler);
 
-// =========================================================================
-// CÁC API PUBLIC (Không chặn checkApiKey)
-// =========================================================================
+// Các route GET cũ của customer (nếu có)
+router.get('/customers', customerController.getAllCustomers);
+router.get('/customers/:id', customerController.getCustomerById);
 
-// API lấy API Key cũ
-router.get('/customers/getApikey/:id', getApiKey);
+// ==========================================
+// ROUTES ĐƠN HÀNG (ORDERS) - ĐÃ BẢO VỆ BẰNG TOKEN
+// ==========================================
+// Câu 7: POST /api/orders -> Tạo đơn hàng mới (Cần Token)
+router.post('/orders', authenticateToken, orderController.createOrder);
 
-// NEW LESSON 7: API Đăng ký & Đăng nhập
-router.post('/register', validateRegister, register);
-router.post('/login', validateLogin, login);
+// Câu 3: GET /api/users/:id/orders -> Xem đơn hàng chính chủ
+router.get('/users/:id/orders', authenticateToken, orderController.getOrdersByCustomer);
 
+// Câu 4: GET /api/orders/highvalue -> Đơn hàng giá trị cao
+router.get('/orders/highvalue', authenticateToken, orderController.getHighValueOrders);
 
-// =========================================================================
-// CÁC API PHÍA DƯỚI ĐỀU ĐƯỢC BẢO VỆ BỞI MIDDLEWARE checkApiKey
-// =========================================================================
+// Câu 8: PUT /api/orders/:id -> Cập nhật số lượng đơn hàng
+router.put('/orders/:id', authenticateToken, orderController.updateOrderQuantity);
 
-// --- Routes Khách hàng ---
-router.get('/customers', checkApiKey, getAllCustomers);
-router.get('/customers/:id', checkApiKey, getCustomerById);
-router.post('/customers', checkApiKey, validateRegister, createCustomer); 
+// DELETE /api/orders/:id -> Xóa đơn hàng
+router.delete('/orders/:id', authenticateToken, orderController.deleteOrder);
 
-// --- Routes Đơn hàng ---
-// Chuẩn hóa: Thêm route này để sửa lỗi "Cannot GET /api/orders" lúc nãy bạn gặp
-if (typeof getAllOrders === 'function') {
-    router.get('/orders', checkApiKey, getAllOrders); 
-}
-
-router.get('/orders/highvalue', checkApiKey, getHighValueOrders);       // Lấy đơn hàng giá trị cao
-router.get('/users/:id/orders', checkApiKey, getOrdersByCustomer);      // Yêu cầu 3: Lấy đơn hàng theo User ID
-router.post('/orders', checkApiKey, validateOrder, createOrder);        // Yêu cầu 4: Tạo đơn hàng
-router.put('/orders/:id', checkApiKey, updateOrderQuantity);          // Yêu cầu 5: Cập nhật số lượng
-router.delete('/orders/:id', checkApiKey, deleteOrder);               // Yêu cầu 6: Xóa đơn hàng
-
-// --- Routes Sản phẩm ---
-router.get('/products', checkApiKey, getProductsByPrice);
+// GET /api/orders -> Xem tất cả đơn hàng tổng quát
+router.get('/orders', authenticateToken, orderController.getAllOrders);
 
 module.exports = router;
