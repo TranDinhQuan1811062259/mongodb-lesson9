@@ -12,7 +12,7 @@ const connectDB = async () => {
   }
 };
 
-// Import file định tuyến chính
+// Import file định tuyến chính (Sẽ quản lý toàn bộ 15 yêu cầu của đề bài)
 const apiRoutes = require('./routes/apiRoutes');
 
 const app = express();
@@ -20,17 +20,17 @@ const app = express();
 // Khởi chạy kết nối Database
 connectDB();
 
-// Middleware xử lý JSON body dữ liệu đầu vào (bắt buộc để đọc được req.body khi POST/PUT)
+// Middleware xử lý JSON body (bắt buộc để nhận dữ liệu từ Postman)
 app.use(express.json());
 
-// Sử dụng toàn bộ route API với tiền tố /api chuẩn chỉnh
+// Sử dụng toàn bộ route API với tiền tố /api
 app.use('/api', apiRoutes);
 
-// Cấu hình cổng Port chạy ứng dụng
+// Cấu hình cổng Port
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`===========================================================`);
-  console.log(`🚀 Server đang chạy ổn định tại: http://localhost:${PORT}`);
-  console.log(`📌 API lấy Key (Câu 0): http://localhost:${PORT}/api/customers/getApikey/c001`);
+  console.log(`🚀 Server Real Estate đang chạy tại: http://localhost:${PORT}`);
+  console.log(`📌 Sẵn sàng xử lý 15 yêu cầu API từ đề bài.`);
   console.log(`===========================================================`);
 });

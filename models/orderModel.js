@@ -1,11 +1,11 @@
 const mongoose = require('mongoose');
 
-const orderSchema = new mongoose.Schema({
-  id: { type: String, required: true, unique: true },
-  customerId: { type: String, required: true },
-  productId: { type: String, required: true },
-  quantity: { type: Number, required: true },
-  totalPrice: { type: Number, required: true }
+const depositOrderSchema = new mongoose.Schema({
+    customerId: { type: mongoose.Schema.Types.ObjectId, ref: 'Customer', required: true },
+    propertyId: { type: mongoose.Schema.Types.ObjectId, ref: 'Property', required: true },
+    depositDate: { type: Date, default: Date.now },
+    amount: { type: Number, required: true },
+    status: { type: String, enum: ['Pending', 'Success', 'Cancel'], default: 'Pending' }
 });
 
-module.exports = mongoose.model('Order', orderSchema);
+module.exports = mongoose.model('DepositOrder', depositOrderSchema);
