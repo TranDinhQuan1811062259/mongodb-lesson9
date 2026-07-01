@@ -5,7 +5,7 @@ const router = express.Router();
 const authController = require('../controllers/authController');
 const propertyController = require('../controllers/propertyController');
 const customerController = require('../controllers/customerController');
-const depositOrderController = require('../controllers/depositOrderController'); // Đã import
+const depositOrderController = require('../controllers/depositOrderController');
 
 // Import Middleware
 const { authenticateToken, authorize } = require('../middlewares/authMiddleware');
@@ -22,31 +22,31 @@ router.post('/login', authController.login);
 // Xem danh sách: Ai cũng xem được
 router.get('/properties', propertyController.getAllProperties);
 
-// Đăng tin (Yêu cầu 8): Chỉ Admin hoặc Employee
+// Đăng tin: Chỉ Manager hoặc Employee
 router.post('/properties', 
     authenticateToken, 
-    authorize(['Admin', 'Employee']), 
+    authorize(['Manager', 'Employee']), // Cập nhật theo role trong Account
     propertyController.createProperty
 );
 
-// Cập nhật (Yêu cầu 13): Chỉ Admin hoặc Employee
+// Cập nhật: Chỉ Manager hoặc Employee
 router.put('/properties/:id', 
     authenticateToken, 
-    authorize(['Admin', 'Employee']), 
+    authorize(['Manager', 'Employee']), 
     propertyController.updateProperty
 );
 
 // ==========================================
-// ROUTES KHÁCH HÀNG & ĐƠN CỌC (DepositOrder)
+// ROUTES ĐƠN CỌC (DepositOrders)
 // ==========================================
-// Tạo đơn cọc (Yêu cầu 10): Chỉ Customer
+// Tạo đơn cọc: Chỉ Customer
 router.post('/deposit-orders', 
     authenticateToken, 
     authorize(['Customer']), 
     depositOrderController.createDeposit
 );
 
-// Xem đơn của chính mình (Yêu cầu 11): Chỉ Customer
+// Xem đơn của chính mình: Chỉ Customer
 router.get('/customers/my-orders', 
     authenticateToken, 
     authorize(['Customer']), 

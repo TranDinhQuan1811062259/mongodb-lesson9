@@ -1,15 +1,20 @@
-const Order = require('../models/orderModel'); // Giả sử bạn dùng orderModel
+// controllers/depositOrderController.js
+const DepositOrder = require('../models/orderModel'); 
 
 exports.createDeposit = async (req, res) => {
     try {
+        // Lấy dữ liệu từ body (đảm bảo body gửi lên có tên trường là 'amount')
         const { propertyId, amount } = req.body;
-        const customerId = req.user.id; // Lấy từ token đã xác thực
+        
+        // Lấy customerId từ thông tin user đã được xác thực qua middleware
+        const customerId = req.user.id; 
 
-        const newOrder = new Order({
+        // Tạo instance mới của DepositOrder, khớp tên trường với orderModel.js
+        const newOrder = new DepositOrder({
             customerId,
             propertyId,
-            amount,
-            status: 'Pending' // Trạng thái mặc định khi mới đặt cọc
+            amount: amount, // Đã sửa lại từ depositAmount thành amount
+            status: 'Pending'
         });
 
         await newOrder.save();
@@ -21,7 +26,10 @@ exports.createDeposit = async (req, res) => {
 
 exports.getMyOrders = async (req, res) => {
     try {
-        const orders = await Order.find({ customerId: req.user.id });
+        // Tìm các đơn đặt cọc của người dùng hiện tại
+        const orders = await DepositOrder.find({ customerId: req.user.id })
+                                         .populate('customerId')
+                                         .populate('propertyId');
         res.status(200).json(orders);
     } catch (error) {
         res.status(500).json({ error: error.message });
